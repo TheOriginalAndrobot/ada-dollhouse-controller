@@ -1,0 +1,9 @@
+:Author: androbot
+:Date: 2020-11-17
+:Revision: v1
+:License: Public Domain
+
+= Project: Ada's Dollhouse Controller
+
+Controller for dollhouse lights and sounds.
+
