@@ -1,5 +1,7 @@
 /*
    Ada's Dollhouse Controller
+
+   Board: Sparkfun Pro Micro 3.3V
 */
 
 #include <Wire.h> // Include the I2C library
@@ -41,11 +43,11 @@ const byte LIGHT_BUTTON_BRIGHTNESS = 255;
 
 // Maps light number (1st index) to pair of PWM channels (99 if unused)
 const unsigned int LIGHT_CHAN_MAP[NUM_LIGHTS][2] = { {0, 1},
-                                           {2, 3},
-                                           {4, 99},
-                                           {5, 6},
-                                           {7, 99},
-                                           {8, 23} };
+                                                     {2, 3},
+                                                     {4, 99},
+                                                     {5, 6},
+                                                     {7, 99},
+                                                     {8, 23} };
 // Maps light nubmer to pushbutton lamp channel
 const byte PB_LAMP_CHAN_MAP[NUM_LIGHTS] = {4, 5, 6, 7, 12, 13};
 
