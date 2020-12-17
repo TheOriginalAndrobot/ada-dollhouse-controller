@@ -51,8 +51,11 @@ const unsigned int LIGHT_CHAN_MAP[NUM_LIGHTS][2] = { {0, 1},
 // Maps light nubmer to pushbutton lamp channel
 const byte PB_LAMP_CHAN_MAP[NUM_LIGHTS] = {4, 5, 6, 7, 12, 13};
 
-// Current state of a light
+// Current on/off state of a light
 bool lightState[NUM_LIGHTS] = {0,0,0,0,0,0};
+
+// Current light value
+volatile unsigned int lightValue[NUM_LIGHTS] = {0,0,0,0,0,0};
 
 
 //
@@ -160,13 +163,6 @@ void setup() {
     Serial.println("ERROR: Could not init SFX Board");
     while (1);
   }
-  
-  
-  //
-  // TESTING TESTING TESTING
-  //
-  //tlc.setPWM(23,4095);
-  //tlc.write();
   
   
   //
@@ -295,6 +291,29 @@ void toggleLight(int lightNum) {
   
   // Save state
   lightState[lightNum] = !lightState[lightNum];
+}
+
+//
+// Turn on light fixture
+//
+void turnOnLight(int lightNum) {
+  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], LIGHT_LED_BRIGHTNESS);
+  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], LIGHT_LED_BRIGHTNESS);
+}
+
+//
+// Turn off light fixture
+//
+void turnOffLight(int lightNum) {
+  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], 0);
+  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], 0);
+}
+
+//
+// Update light values
+//
+void updateLightValues() {
+  
 }
 
 
