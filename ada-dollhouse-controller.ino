@@ -42,7 +42,7 @@ const byte IOB_BTNS[8] = {0, 1, 2, 3, 8, 9 ,10 ,11};
 //
 const unsigned int NUM_LIGHTS = 6;
 const unsigned int LIGHT_LED_BRIGHTNESS = 4095;
-const unsigned int LIGHT_LED_STEP = 16;
+const unsigned int LIGHT_LED_STEP = 32;
 const byte LIGHT_BUTTON_BRIGHTNESS = 255;
 
 // Maps light number (1st index) to pair of PWM channels (99 if unused)
@@ -170,9 +170,9 @@ void setup() {
   
   
   //
-  // Timer for periodic interrupts every 1ms
+  // Timer for periodic interrupts every 2ms
   //
-  TimerLib.setInterval_us(everyMilisecond, 1000);
+  TimerLib.setInterval_us(runOnTimer, 2000);
 
 
   //
@@ -230,9 +230,9 @@ void iobISR() {
 
 
 //
-// Period work on a 1ms timer interrupt
+// Do periodic work on timer interrupt
 //
-void everyMilisecond(){
+void runOnTimer(){
   // Perform light value fading
   updateLightValues();
 }
