@@ -4,6 +4,9 @@
    Board: Sparkfun Pro Micro 3.3V
 */
 
+#include <Arduino.h>
+#include <uTimerLib.h>
+#include <util/atomic.h> // this library includes the ATOMIC_BLOCK macro.
 #include <Wire.h> // Include the I2C library
 #include <SparkFunSX1509.h> // Include SX1509 library
 #include <Adafruit_TLC5947.h>
@@ -39,6 +42,7 @@ const byte IOB_BTNS[8] = {0, 1, 2, 3, 8, 9 ,10 ,11};
 //
 const unsigned int NUM_LIGHTS = 6;
 const unsigned int LIGHT_LED_BRIGHTNESS = 4095;
+const unsigned int LIGHT_LED_STEP = 16;
 const byte LIGHT_BUTTON_BRIGHTNESS = 255;
 
 // Maps light number (1st index) to pair of PWM channels (99 if unused)
@@ -52,7 +56,7 @@ const unsigned int LIGHT_CHAN_MAP[NUM_LIGHTS][2] = { {0, 1},
 const byte PB_LAMP_CHAN_MAP[NUM_LIGHTS] = {4, 5, 6, 7, 12, 13};
 
 // Current on/off state of a light
-bool lightState[NUM_LIGHTS] = {0,0,0,0,0,0};
+volatile bool lightState[NUM_LIGHTS] = {0,0,0,0,0,0};
 
 // Current light value
 volatile unsigned int lightValue[NUM_LIGHTS] = {0,0,0,0,0,0};
@@ -70,7 +74,7 @@ Adafruit_Soundboard sfx = Adafruit_Soundboard(&Serial1, NULL, PIN_SFX_RST);
 // Global variables
 //
 volatile bool buttonPressed = false; // Flag button press in ISR
-
+volatile bool lightsNeedUpdate = false; // Cause sync to hardware
 
 
 //
@@ -166,12 +170,17 @@ void setup() {
   
   
   //
+  // Timer for periodic interrupts every 1ms
+  //
+  TimerLib.setInterval_us(everyMilisecond, 1000);
+
+
+  //
   // Enable interrupts
   //
-    
+
   // Clear any pending interrupts
   io.interruptSource();
-
   // Button down ISR
   attachInterrupt(digitalPinToInterrupt(PIN_IOB_INTn), iobISR, FALLING);
 
@@ -187,20 +196,25 @@ void loop() {
   // Handle button presses
   //
   if (buttonPressed) {
+    // Clear the flag early to avoid race condition
+    buttonPressed = false; 
+    
     // read io.interruptSource() find out which pin generated
 	  // an interrupt and clear the SX1509's interrupt output.
     unsigned int intStatus = io.interruptSource();
-    buttonPressed = false; // Clear the buttonPressed flag
     
 	  // For debugging handiness, print the intStatus variable.
 	  // Each bit in intStatus represents a single SX1509 IO.
-    Serial.println("intStatus = " + String(intStatus, BIN));
+    //Serial.println("intStatus = " + String(intStatus, BIN));
 
     // Do the things
     buttonDecode(intStatus);
-    
-    
   }
+
+  //
+  // Process light updates
+  //
+  syncLightsIfNeeded();
 }
 
 
@@ -214,6 +228,14 @@ void iobISR() {
   // time through.
 }
 
+
+//
+// Period work on a 1ms timer interrupt
+//
+void everyMilisecond(){
+  // Perform light value fading
+  updateLightValues();
+}
 
 //
 // Decodes which button(s) were pressed and calls button action on each
@@ -277,43 +299,84 @@ void toggleLight(int lightNum) {
   if (!lightState[lightNum]) {
     // Light is off, so turn on
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], LIGHT_BUTTON_BRIGHTNESS);
-    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], LIGHT_LED_BRIGHTNESS);
-    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], LIGHT_LED_BRIGHTNESS);
+    lightState[lightNum] = true;
   } else {
     // Light is on, so turn off
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], 0);
-    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], 0);
-    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], 0);
+    lightState[lightNum] = false;
   }
   
   // Flush LED PWM data
-  tlc.write();
-  
-  // Save state
-  lightState[lightNum] = !lightState[lightNum];
+  //tlc.write();
 }
 
-//
-// Turn on light fixture
-//
-void turnOnLight(int lightNum) {
-  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], LIGHT_LED_BRIGHTNESS);
-  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], LIGHT_LED_BRIGHTNESS);
-}
-
-//
-// Turn off light fixture
-//
-void turnOffLight(int lightNum) {
-  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], 0);
-  tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], 0);
-}
 
 //
 // Update light values
 //
+//   This performs fade-in and fade-out of the light values
+//
 void updateLightValues() {
+  int lVal;
+  bool needsUpdate = false;
+
+  for (int lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
+    lVal = lightValue[lightNum];
+    // Going up
+    if (lightState[lightNum] && lVal < LIGHT_LED_BRIGHTNESS){
+      lVal += LIGHT_LED_STEP;
+      if (lVal > LIGHT_LED_BRIGHTNESS){
+        lVal = LIGHT_LED_BRIGHTNESS;
+      }
+      lightValue[lightNum] = lVal;
+      needsUpdate = true;
+    }
+    // Going down
+    else if (!lightState[lightNum] && lVal > 0){
+      lVal -= LIGHT_LED_STEP;
+      if (lVal < 0){
+        lVal = 0;
+      }
+      lightValue[lightNum] = lVal;
+      needsUpdate = true;
+    }
+  }
+
+  // Only set, don't clear
+  if (needsUpdate){
+    lightsNeedUpdate = true;
+  }
+}
+
+
+//
+// Sync light values out to hardware if needed
+//
+bool syncLightsIfNeeded(){
+  unsigned int lVal;
   
+  // Bail if nothing needs to be done
+  if (!lightsNeedUpdate){
+    return false;
+  }
+
+  // Clear flag first thing so we don't miss an asyc update to values
+  lightsNeedUpdate = false;
+
+  // Load all light values
+  for (int lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
+    // Grab light value in a safe way
+    ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+      lVal = lightValue[lightNum];
+    }
+    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], lVal);
+    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], lVal);
+  }
+
+  // Sync with hardware
+  tlc.write();
+
+  return true;
 }
 
 
