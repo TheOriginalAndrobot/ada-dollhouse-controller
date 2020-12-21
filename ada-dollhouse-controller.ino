@@ -96,8 +96,13 @@ void setup() {
   //
   pinMode(PIN_PWM_BLANK, OUTPUT);
   pwmBlankOn();
+  //
   pinMode(PIN_AMP_SHDNn, OUTPUT);
   ampOff();
+  //
+  digitalWrite(PIN_SFX_RST, LOW);
+  pinMode(PIN_SFX_RST, OUTPUT);
+
   
   //
   // Debug
@@ -310,19 +315,23 @@ void buttonAction(int button) {
 // Toggle a light fixture and indicator lamp
 //
 void toggleLight(int lightNum) {
-  
-  if (!lightState[lightNum]) {
-    // Light is off, so turn on
+  setLight(lightNum, ~lightState[lightNum]);
+}
+
+//
+// Set light state
+//
+void setLight(int lightNum, bool newState){
+
+  if (newState) {
+    // Turn on
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], LIGHT_BUTTON_BRIGHTNESS);
     lightState[lightNum] = true;
   } else {
-    // Light is on, so turn off
+    // Turn off
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], 0);
     lightState[lightNum] = false;
   }
-  
-  // Flush LED PWM data
-  //tlc.write();
 }
 
 
@@ -465,15 +474,11 @@ void allOff() {
   
   // Turn off all lights
   for (int lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
-    
-    io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], 0);
-    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][0], 0);
-    tlc.setPWM(LIGHT_CHAN_MAP[lightNum][1], 0);
-    lightState[lightNum] = false;
+    setLight(lightNum, false);
   }
   
   // Flush LED PWM data
-  tlc.write();
+  //tlc.write();
   
   
 }
