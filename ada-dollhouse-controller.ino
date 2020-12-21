@@ -4,6 +4,14 @@
    Board: Sparkfun Pro Micro 3.3V
 */
 
+//
+// Enable debug mode
+//
+#define DEBUG
+
+//
+// Libraries
+//
 #include <Arduino.h>
 #include <uTimerLib.h>
 #include <util/atomic.h> // this library includes the ATOMIC_BLOCK macro.
@@ -11,7 +19,6 @@
 #include <SparkFunSX1509.h> // Include SX1509 library
 #include <Adafruit_TLC5947.h>
 #include <Adafruit_Soundboard.h>
-
 
 
 //
@@ -67,7 +74,7 @@ volatile unsigned int lightValue[NUM_LIGHTS] = {0,0,0,0,0,0};
 //
 SX1509 io;
 Adafruit_TLC5947 tlc = Adafruit_TLC5947(1, PIN_PWM_CLK, PIN_PWM_DIN, PIN_PWM_LAT);
-Adafruit_Soundboard sfx = Adafruit_Soundboard(&Serial1, NULL, PIN_SFX_RST);
+Adafruit_Soundboard sfx = Adafruit_Soundboard(&Serial1, &Serial, PIN_SFX_RST);
 
 
 //
@@ -95,7 +102,9 @@ void setup() {
   //
   // Debug
   //
-  delay(2000);
+  #ifdef DEBUG
+    delay(4000);
+  #endif
   Serial.begin(9600);
   Serial.println("*** Ada's Dollhouse ***");
   
@@ -111,9 +120,11 @@ void setup() {
   // expander. It'll return 1 on success, 0 on fail.
   if (!io.begin(0x3E))
   {
-    // We failed to communicate
-    Serial.println("ERROR: Could not init IO Expander");
-    while (1); // And loop forever.
+    // We failed to communicate, loop forever
+    while (1){
+      Serial.println("ERROR: Could not init IO Expander");
+      delay(5000);
+    }
   }
   
   // Use the internal 2MHz oscillator.
@@ -145,8 +156,10 @@ void setup() {
   // LED driver board setup
   //
   if (!tlc.begin()) {
-    Serial.println("ERROR: Could not init PWM Board");
-    while (1);
+    while (1){
+      Serial.println("ERROR: Could not init PWM Board");
+      delay(5000);
+    }
   }
   
   // Clear all LEDs (buffer starts as all zero)
@@ -164,8 +177,10 @@ void setup() {
   flushSFXInput();      // Clear serial buffer
   
   if (!sfx.reset()) {
-    Serial.println("ERROR: Could not init SFX Board");
-    while (1);
+    while (1){
+      Serial.println("ERROR: Could not init SFX Board");
+      delay(5000);
+    }
   }
   
   
