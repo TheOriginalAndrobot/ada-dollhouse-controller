@@ -18,7 +18,7 @@
 #include <Wire.h> // Include the I2C library
 #include <SparkFunSX1509.h> // Include SX1509 library
 #include <Adafruit_TLC5947.h>
-#include <Adafruit_Soundboard.h>
+#include "Adafruit_Soundboard.h"
 
 
 //
@@ -315,7 +315,7 @@ void buttonAction(int button) {
 // Toggle a light fixture and indicator lamp
 //
 void toggleLight(int lightNum) {
-  setLight(lightNum, ~lightState[lightNum]);
+  setLight(lightNum, !lightState[lightNum]);
 }
 
 //
