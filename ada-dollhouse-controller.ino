@@ -409,6 +409,7 @@ void setLight(int lightNum, bool newState){
 
   if (newState) {
     // Turn on
+    resetLightPowerTimer();
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], LIGHT_BUTTON_BRIGHTNESS);
     lightState[lightNum] = true;
   } else {
@@ -533,6 +534,7 @@ void ampOff() {
   digitalWrite(PIN_AMP_SHDNn, LOW);
 }
 void ampOn() {
+  resetAmpPowerTimer();
   digitalWrite(PIN_AMP_SHDNn, HIGH);
   if (!ampPowerState){
     delay(10);
