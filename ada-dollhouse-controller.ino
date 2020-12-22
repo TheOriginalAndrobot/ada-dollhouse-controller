@@ -46,6 +46,10 @@ const int PIN_PWM_BLANK = 8;
 const int PIN_AMP_SHDNn = 4;
 const int PIN_SFX_RST = 5;
 
+//
+// SFX constants
+//
+const uint8_t NUM_DOORBELL_TRACKS = 3;
 
 //
 // IO Board Constants
@@ -104,6 +108,7 @@ volatile bool ampPowerTimeout = false;    // Flag to cause amp to power down
 volatile int  ampPowerTimer = 0;          // Counts timer ticks toward timeout
 volatile bool lightPowerTimeout = false;  // Flag to cause lights to power down
 volatile long lightPowerTimer = 0;        // Counts timer ticks toward timeout
+uint8_t doorbellTrack = 0;                // Holds next doorbell track number to play
 
 //
 // Run once at boot time
@@ -208,6 +213,8 @@ void setup() {
       delay(5000);
     }
   }
+
+  doorbellTrack = random(NUM_DOORBELL_TRACKS);
   
   
   //
@@ -496,17 +503,24 @@ bool syncLightsIfNeeded(){
 // Ring the doorbell
 //
 void ringDoorbell() {
-  playSFX(6);
+  // Play next track and advance the sequence
+  playSFX("T06RAND" + String(doorbellTrack) + "OGG");
+  doorbellTrack = (doorbellTrack + 1) % NUM_DOORBELL_TRACKS;
 }
 
 //
 // Play sound effect
 //
 void playSFX(uint8_t track){
-  ampOn();
-  sfx.playTrack(track);
+  playSFX("T0" + String(track) + "     OGG");
 }
-
+void playSFX(String filename){
+  char name[12];
+  filename.toCharArray(name,12);
+  DEBUG_PRINT("Playing track " + filename);
+  ampOn();
+  sfx.playTrack(name);
+}
 
 //
 // Amplifier power control
