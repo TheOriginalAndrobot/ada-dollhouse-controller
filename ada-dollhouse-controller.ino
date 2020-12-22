@@ -9,6 +9,7 @@
 //
 #define DEBUG
 
+
 //
 // Libraries
 //
@@ -19,6 +20,15 @@
 #include <SparkFunSX1509.h> // Include SX1509 library
 #include <Adafruit_TLC5947.h>
 #include "Adafruit_Soundboard.h"
+
+//
+// Macros
+//
+#ifdef DEBUG
+ #define DEBUG_PRINT(x)  Serial.println (x)
+#else
+ #define DEBUG_PRINT(x)
+#endif
 
 
 //
@@ -45,11 +55,18 @@ const byte IOB_BTNS[8] = {0, 1, 2, 3, 8, 9 ,10 ,11};
 
 
 //
+// Timing parameters
+//
+const unsigned int TIMER_PERIOD_US = 10000;               // 10ms
+const unsigned int AMP_POWER_TIMEOUT_TICKS = 1000;        // 10s
+const unsigned long LIGHT_POWER_TIMEOUT_TICKS = 360000;   // 1h
+const unsigned int LIGHT_LED_STEP = 64;
+
+//
 // Light data
 //
 const unsigned int NUM_LIGHTS = 6;
 const unsigned int LIGHT_LED_BRIGHTNESS = 4095;
-const unsigned int LIGHT_LED_STEP = 64;
 const byte LIGHT_BUTTON_BRIGHTNESS = 255;
 
 // Maps light number (1st index) to pair of PWM channels (99 if unused)
@@ -80,9 +97,13 @@ Adafruit_Soundboard sfx = Adafruit_Soundboard(&Serial1, &Serial, PIN_SFX_RST);
 //
 // Global variables
 //
-volatile bool buttonPressed = false; // Flag button press in ISR
-volatile bool lightsNeedUpdate = false; // Cause sync to hardware
-
+volatile bool buttonPressed = false;      // Flag button press in ISR
+volatile bool lightsNeedUpdate = false;   // Cause sync to hardware
+volatile bool ampPowerState = false;      // Amp power state
+volatile bool ampPowerTimeout = false;    // Flag to cause amp to power down
+volatile int  ampPowerTimer = 0;          // Counts timer ticks toward timeout
+volatile bool lightPowerTimeout = false;  // Flag to cause lights to power down
+volatile long lightPowerTimer = 0;        // Counts timer ticks toward timeout
 
 //
 // Run once at boot time
@@ -190,9 +211,9 @@ void setup() {
   
   
   //
-  // Timer for periodic interrupts every 10ms
+  // Timer for periodic interrupts
   //
-  Timer3.initialize(10000);
+  Timer3.initialize(TIMER_PERIOD_US);
   Timer3.attachInterrupt(runOnTimer);
 
 
@@ -223,10 +244,6 @@ void loop() {
     // read io.interruptSource() find out which pin generated
 	  // an interrupt and clear the SX1509's interrupt output.
     unsigned int intStatus = io.interruptSource();
-    
-	  // For debugging handiness, print the intStatus variable.
-	  // Each bit in intStatus represents a single SX1509 IO.
-    //Serial.println("intStatus = " + String(intStatus, BIN));
 
     // Do the things
     buttonDecode(intStatus);
@@ -236,6 +253,25 @@ void loop() {
   // Process light updates
   //
   syncLightsIfNeeded();
+
+  //
+  // Timeout logic checks
+  //
+  if (lightPowerTimeout){
+    // Turn off all lights
+    for (byte lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
+      setLight(lightNum, false);
+    }
+    resetLightPowerTimer();
+    DEBUG_PRINT("Light power timeout");
+  }
+
+  if (ampPowerTimeout){
+    ampOff();
+    resetAmpPowerTimer();
+    DEBUG_PRINT("Amp power timeout");
+  }
+
 }
 
 
@@ -256,7 +292,41 @@ void iobISR() {
 void runOnTimer(){
   // Perform light value fading
   updateLightValues();
+
+  // Light timeout logic
+  if (anyLightOn()){
+    lightPowerTimer++;
+    if (lightPowerTimer > LIGHT_POWER_TIMEOUT_TICKS){
+      lightPowerTimeout = true;
+    }
+  }
+
+  // Amp timeout logic
+  if (ampPowerState){
+    ampPowerTimer++;
+    if (ampPowerTimer > AMP_POWER_TIMEOUT_TICKS){
+      ampPowerTimeout = true;
+    }
+  }
 }
+
+
+//
+// Timeout timer reset fucntions
+//
+void resetAmpPowerTimer(){
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    ampPowerTimeout = false;
+    ampPowerTimer = 0;
+  }
+}
+void resetLightPowerTimer(){
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    lightPowerTimeout = false;
+    lightPowerTimer = 0;
+  }
+}
+
 
 //
 // Decodes which button(s) were pressed and calls button action on each
@@ -264,7 +334,7 @@ void runOnTimer(){
 void buttonDecode(unsigned int btnBitmap) {
   for (int btnNum=0; btnNum<16; btnNum++){
     if (btnBitmap & (1<<btnNum)){
-      Serial.println("Button " + String(btnNum) + " pressed");
+      DEBUG_PRINT("Button " + String(btnNum) + " pressed");
       buttonAction(btnNum);
     }
   }
@@ -335,6 +405,17 @@ void setLight(int lightNum, bool newState){
   }
 }
 
+//
+// Return true if any lights are on
+//
+bool anyLightOn(){
+  bool result = false;
+  for (byte lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
+    result = result || lightState[lightNum];
+  }
+  return result;
+}
+
 
 //
 // Update light values
@@ -345,7 +426,7 @@ void updateLightValues() {
   int lVal;
   bool needsUpdate = false;
 
-  for (int lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
+  for (byte lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
     lVal = lightValue[lightNum];
     // Going up
     if (lightState[lightNum] && lVal < LIGHT_LED_BRIGHTNESS){
@@ -422,12 +503,14 @@ void ringDoorbell() {
 // Amplifier power control
 //
 // Note: Pull-up on SHDN pin has been removed from amp board
-//       and a 100k pull-down has been isntalled on mobo
+//       and a 100k pull-down has been installed on mobo
 //
 void ampOff() {
+  ampPowerState = false;
   digitalWrite(PIN_AMP_SHDNn, LOW);
 }
 void ampOn() {
+  ampPowerState = true;
   digitalWrite(PIN_AMP_SHDNn, HIGH);
   delay(10);
 }
@@ -474,12 +557,7 @@ void allOff() {
   ampOff();
   
   // Turn off all lights
-  for (int lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
+  for (byte lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
     setLight(lightNum, false);
   }
-  
-  // Flush LED PWM data
-  //tlc.write();
-  
-  
 }
