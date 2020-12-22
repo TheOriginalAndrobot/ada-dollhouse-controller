@@ -386,7 +386,13 @@ void buttonAction(int button) {
 // Toggle a light fixture and indicator lamp
 //
 void toggleLight(int lightNum) {
+  // Toggle light state
   setLight(lightNum, !lightState[lightNum]);
+
+  // Play sound effect only when turning on
+  if (lightState[lightNum]){
+    playSFX(lightNum);
+  }
 }
 
 //
@@ -490,12 +496,15 @@ bool syncLightsIfNeeded(){
 // Ring the doorbell
 //
 void ringDoorbell() {
-  // Turn on amp
-  ampOn();
-  
-  // Play Doorbell sound
-  sfx.playTrack((uint8_t)0);
+  playSFX(6);
+}
 
+//
+// Play sound effect
+//
+void playSFX(uint8_t track){
+  ampOn();
+  sfx.playTrack(track);
 }
 
 
@@ -510,9 +519,11 @@ void ampOff() {
   digitalWrite(PIN_AMP_SHDNn, LOW);
 }
 void ampOn() {
-  ampPowerState = true;
   digitalWrite(PIN_AMP_SHDNn, HIGH);
-  delay(10);
+  if (!ampPowerState){
+    delay(10);
+  }
+  ampPowerState = true;
 }
 
 
