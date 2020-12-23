@@ -28,6 +28,11 @@
  #define DEBUG_PRINT(x)
 #endif
 
+// System modes
+#define SM_OFF    0
+#define SM_ON     1
+#define SM_QUIET  2
+
 
 //
 // Pin defs
@@ -49,11 +54,13 @@ const int PIN_SFX_RST = 5;
 //
 const uint8_t NUM_DOORBELL_TRACKS = 3;
 
+
 //
 // IO Board Constants
 //
 const byte IOB_LEDS[7] = {4, 5, 6, 7, 12, 13, 14};
 const byte IOB_BTNS[8] = {0, 1, 2, 3, 8, 9 ,10 ,11};
+const byte PB_LAMP_SYS_MODE = 14;
 
 
 //
@@ -62,6 +69,7 @@ const byte IOB_BTNS[8] = {0, 1, 2, 3, 8, 9 ,10 ,11};
 const unsigned int TIMER_PERIOD_US = 10000;               // 10ms
 const unsigned int AMP_POWER_TIMEOUT_TICKS = 1000;        // 10s
 const unsigned long LIGHT_POWER_TIMEOUT_TICKS = 360000;   // 1h
+const unsigned long SYS_POWER_TIMEOUT_TICKS = 361000;     // 1h+10s
 const unsigned int LIGHT_LED_STEP = 64;
 
 //
@@ -75,9 +83,10 @@ const byte LIGHT_BUTTON_BRIGHTNESS = 255;
 const unsigned int LIGHT_CHAN_MAP[NUM_LIGHTS][2] = { {0, 1},
                                                      {2, 3},
                                                      {4, 99},
-                                                     {5, 6},
+                                                     {99, 6},
                                                      {7, 99},
-                                                     {8, 23} };
+                                                     {8, 99} };
+
 // Maps light nubmer to pushbutton lamp channel
 const byte PB_LAMP_CHAN_MAP[NUM_LIGHTS] = {4, 5, 6, 7, 12, 13};
 
@@ -86,6 +95,10 @@ volatile bool lightState[NUM_LIGHTS] = {0,0,0,0,0,0};
 
 // Current light value
 volatile unsigned int lightValue[NUM_LIGHTS] = {0,0,0,0,0,0};
+
+// SFX track nubmer map for light on/off events (use 0 for none)
+const byte LIGHT_ON_SFX_MAP[NUM_LIGHTS] =  {5, 4, 3, 0, 0, 0};
+const byte LIGHT_OFF_SFX_MAP[NUM_LIGHTS] = {0, 0, 0, 2, 1, 6};
 
 
 //
@@ -100,12 +113,16 @@ Adafruit_TLC5947 tlc = Adafruit_TLC5947(1, PIN_PWM_CLK, PIN_PWM_DIN, PIN_PWM_LAT
 //
 volatile bool buttonPressed = false;      // Flag button press in ISR
 volatile bool lightsNeedUpdate = false;   // Cause sync to hardware
+volatile bool sysPowerState = false;      // System power state
+volatile bool sysPowerTimeout = false;    // Flag to cause system to power down
+volatile long sysPowerTimer = 0;          // Counts timer ticks toward timeout
 volatile bool ampPowerState = false;      // Amp power state
 volatile bool ampPowerTimeout = false;    // Flag to cause amp to power down
 volatile int  ampPowerTimer = 0;          // Counts timer ticks toward timeout
 volatile bool lightPowerTimeout = false;  // Flag to cause lights to power down
 volatile long lightPowerTimer = 0;        // Counts timer ticks toward timeout
 uint8_t doorbellTrack = 0;                // Holds next doorbell track number to play
+byte sysMode = SM_OFF;                    // System mode
 
 //
 // Run once at boot time
@@ -257,6 +274,14 @@ void loop() {
   //
   // Timeout logic checks
   //
+  if (sysPowerTimeout){
+    DEBUG_PRINT("System power timeout");
+    // Turn off system
+    setSysMode(SM_OFF);
+    resetSysPowerTimer();
+    
+  }
+
   if (lightPowerTimeout){
     // Turn off all lights
     for (byte lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
@@ -293,6 +318,14 @@ void runOnTimer(){
   // Perform light value fading
   updateLightValues();
 
+  // Sys power timeout logic
+  if (sysPowerState){
+    sysPowerTimer++;
+    if (sysPowerTimer > SYS_POWER_TIMEOUT_TICKS){
+      sysPowerTimeout = true;
+    }
+  }
+
   // Light timeout logic
   if (anyLightOn()){
     lightPowerTimer++;
@@ -324,6 +357,12 @@ void resetLightPowerTimer(){
   ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
     lightPowerTimeout = false;
     lightPowerTimer = 0;
+  }
+}
+void resetSysPowerTimer(){
+  ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {
+    sysPowerTimeout = false;
+    sysPowerTimer = 0;
   }
 }
 
@@ -374,9 +413,9 @@ void buttonAction(int button) {
     case 10:
       ringDoorbell();
       break;
-    // All Off
+    // System mode
     case 11:
-      allOff();
+      toggleSysMode();
       break;
   }
 }
@@ -389,9 +428,12 @@ void toggleLight(int lightNum) {
   // Toggle light state
   setLight(lightNum, !lightState[lightNum]);
 
-  // Play sound effect only when turning on
+  // Play sound effects
   if (lightState[lightNum]){
-    playSFX(lightNum);
+    playSFX(LIGHT_ON_SFX_MAP[lightNum]);
+  }
+  else {
+    playSFX(LIGHT_OFF_SFX_MAP[lightNum]);
   }
 }
 
@@ -400,13 +442,23 @@ void toggleLight(int lightNum) {
 //
 void setLight(int lightNum, bool newState){
 
+  // Turn on
   if (newState) {
-    // Turn on
+    // Feed watchdogs
     resetLightPowerTimer();
+    resetSysPowerTimer();
+
+    // Turn on system if need be
+    if (sysMode == SM_OFF){
+      setSysMode(SM_ON);
+    }
+    
+    // Turn on lamp and lights
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], LIGHT_BUTTON_BRIGHTNESS);
     lightState[lightNum] = true;
-  } else {
-    // Turn off
+  }
+  // Turn off
+  else {
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], 0);
     lightState[lightNum] = false;
   }
@@ -497,8 +549,16 @@ bool syncLightsIfNeeded(){
 // Ring the doorbell
 //
 void ringDoorbell() {
+  // Feed watchdogs
+  resetSysPowerTimer();
+
+  // Turn on system if need be
+  if (sysMode == SM_OFF){
+    setSysMode(SM_ON);
+  }
+
   // Play next track and advance the sequence
-  playSFX("T06RAND" + String(doorbellTrack) + "OGG");
+  playSFX("T00RAND" + String(doorbellTrack) + "OGG");
   doorbellTrack = (doorbellTrack + 1) % NUM_DOORBELL_TRACKS;
 }
 
@@ -506,9 +566,11 @@ void ringDoorbell() {
 // Play sound effect
 //
 void playSFX(uint8_t track){
+  if (track == 0) return;
   playSFX("T0" + String(track) + "     OGG");
 }
 void playSFX(String filename){
+  if (sysMode == SM_QUIET) return;
   DEBUG_PRINT("Playing track " + filename);
   ampOn();
   Serial1.println("P" + filename);
@@ -551,10 +613,53 @@ void pwmBlankOff() {
 
 
 //
+// Toggle through system modes
+//
+void setSysMode(byte newMode) {
+
+  switch (newMode) {
+    case SM_ON:
+      sysPowerState = true;
+      io.breathe(PB_LAMP_SYS_MODE, 400, 400, 1000, 1000, LIGHT_BUTTON_BRIGHTNESS, 0, true);
+      break;
+    case SM_OFF:
+      sysPowerState = false;
+      io.analogWrite(PB_LAMP_SYS_MODE, 0);
+      allOff();
+      break;
+    case SM_QUIET:
+      sysPowerState = true;
+      io.blink(PB_LAMP_SYS_MODE, 200, 600, LIGHT_BUTTON_BRIGHTNESS, 0);
+      ampOff();
+      break;
+  }
+
+  sysMode = newMode;
+}
+
+//
+// Toggle through system modes
+//
+void toggleSysMode() {
+  switch (sysMode) {
+    case SM_ON:
+      setSysMode(SM_QUIET);
+      break;
+    case SM_OFF:
+      playSFX(9);
+      break;
+    case SM_QUIET:
+      setSysMode(SM_OFF);
+      break;
+  }
+}
+
+
+//
 // Turn everything off
 //
 void allOff() {
-  
+
   // Kill any playing audio
   Serial1.println("q");
   
