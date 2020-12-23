@@ -13,13 +13,11 @@
 //
 // Libraries
 //
-#include <Arduino.h>
-#include <TimerThree.h>
 #include <util/atomic.h> // this library includes the ATOMIC_BLOCK macro.
 #include <Wire.h> // Include the I2C library
 #include <SparkFunSX1509.h> // Include SX1509 library
 #include <Adafruit_TLC5947.h>
-#include "Adafruit_Soundboard.h"
+#include <TimerThree.h>
 
 //
 // Macros
@@ -95,7 +93,6 @@ volatile unsigned int lightValue[NUM_LIGHTS] = {0,0,0,0,0,0};
 //
 SX1509 io;
 Adafruit_TLC5947 tlc = Adafruit_TLC5947(1, PIN_PWM_CLK, PIN_PWM_DIN, PIN_PWM_LAT);
-Adafruit_Soundboard sfx = Adafruit_Soundboard(&Serial1, &Serial, PIN_SFX_RST);
 
 
 //
@@ -128,13 +125,15 @@ void setup() {
   //
   digitalWrite(PIN_SFX_RST, LOW);
   pinMode(PIN_SFX_RST, OUTPUT);
+  //
+  delay(10);
 
   
   //
   // Debug
   //
   #ifdef DEBUG
-    delay(4000);
+    delay(2000);
   #endif
   Serial.begin(9600);
   Serial.println("*** Ada's Dollhouse ***");
@@ -205,16 +204,11 @@ void setup() {
   //
   Serial1.begin(9600);  // This is the HW UART to the SFX chip
   ampOff();             // Turn off the Amp (also configs the PIN)
-  flushSFXInput();      // Clear serial buffer
-  
-  if (!sfx.reset()) {
-    while (1){
-      Serial.println("ERROR: Could not init SFX Board");
-      delay(5000);
-    }
-  }
-
   doorbellTrack = random(NUM_DOORBELL_TRACKS);
+
+  // Take out of reset
+  pinMode(PIN_SFX_RST, INPUT);
+  delay(1500); // give a bit of time to 'boot up'
   
   
   //
@@ -227,7 +221,6 @@ void setup() {
   //
   // Enable interrupts
   //
-
   // Clear any pending interrupts
   io.interruptSource();
   // Button down ISR
@@ -516,11 +509,9 @@ void playSFX(uint8_t track){
   playSFX("T0" + String(track) + "     OGG");
 }
 void playSFX(String filename){
-  char name[12];
-  filename.toCharArray(name,12);
   DEBUG_PRINT("Playing track " + filename);
   ampOn();
-  sfx.playTrack(name);
+  Serial1.println("P" + filename);
 }
 
 //
@@ -560,27 +551,13 @@ void pwmBlankOff() {
 
 
 //
-// Flush out SFX Serial buffers
-//
-void flushSFXInput() {
-  // Read all available serial input to flush pending data.
-  uint16_t timeoutloop = 0;
-  while (timeoutloop++ < 40) {
-    while(Serial1.available()) {
-      Serial1.read();
-      timeoutloop = 0;  // If char was received reset the timer
-    }
-    delay(1);
-  }
-}
-
-//
 // Turn everything off
 //
 void allOff() {
   
-  // Kill any audio
-  sfx.stop();
+  // Kill any playing audio
+  Serial1.println("q");
+  
   ampOff();
   
   // Turn off all lights
