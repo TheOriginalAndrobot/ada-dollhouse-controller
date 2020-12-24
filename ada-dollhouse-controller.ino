@@ -52,7 +52,7 @@ const int PIN_SFX_RST = 5;
 //
 // SFX constants
 //
-const uint8_t NUM_DOORBELL_TRACKS = 3;
+const uint8_t NUM_DOORBELL_TRACKS = 4;
 
 
 //
@@ -229,6 +229,13 @@ void setup() {
   
   
   //
+  // Welcome message
+  //
+  setSysMode(SM_ON);
+  playSFX(9);
+  
+  
+  //
   // Timer for periodic interrupts
   //
   Timer3.initialize(TIMER_PERIOD_US);
@@ -279,7 +286,6 @@ void loop() {
     // Turn off system
     setSysMode(SM_OFF);
     resetSysPowerTimer();
-    
   }
 
   if (lightPowerTimeout){
@@ -620,7 +626,7 @@ void setSysMode(byte newMode) {
   switch (newMode) {
     case SM_ON:
       sysPowerState = true;
-      io.breathe(PB_LAMP_SYS_MODE, 400, 400, 1000, 1000, LIGHT_BUTTON_BRIGHTNESS, 0, true);
+      io.breathe(PB_LAMP_SYS_MODE, 600, 600, 2000, 2000, LIGHT_BUTTON_BRIGHTNESS, 0, true);
       break;
     case SM_OFF:
       sysPowerState = false;
@@ -629,7 +635,7 @@ void setSysMode(byte newMode) {
       break;
     case SM_QUIET:
       sysPowerState = true;
-      io.blink(PB_LAMP_SYS_MODE, 200, 600, LIGHT_BUTTON_BRIGHTNESS, 0);
+      io.blink(PB_LAMP_SYS_MODE, 400, 900, LIGHT_BUTTON_BRIGHTNESS, 0);
       ampOff();
       break;
   }
