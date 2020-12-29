@@ -13,9 +13,9 @@
 //
 // Libraries
 //
-#include <util/atomic.h> // this library includes the ATOMIC_BLOCK macro.
-#include <Wire.h> // Include the I2C library
-#include <SparkFunSX1509.h> // Include SX1509 library
+#include <util/atomic.h>    // this library includes the ATOMIC_BLOCK macro
+#include <Wire.h>           // Include the I2C library
+#include <SparkFunSX1509.h>
 #include <Adafruit_TLC5947.h>
 #include <TimerThree.h>
 
@@ -78,6 +78,8 @@ const unsigned int LIGHT_LED_STEP = 64;
 const unsigned int NUM_LIGHTS = 6;
 const unsigned int LIGHT_LED_BRIGHTNESS = 4095;
 const byte LIGHT_BUTTON_BRIGHTNESS = 255;
+const byte SYS_BUTTON_BRIGHTNESS_HI = 200;
+const byte SYS_BUTTON_BRIGHTNESS_LOW = 30;
 
 // Maps light number (1st index) to pair of PWM channels (99 if unused)
 const unsigned int LIGHT_CHAN_MAP[NUM_LIGHTS][2] = { {0, 1},
@@ -226,6 +228,11 @@ void setup() {
   // Take out of reset
   pinMode(PIN_SFX_RST, INPUT);
   delay(1500); // give a bit of time to 'boot up'
+
+  // Adjust volume up
+  Serial1.println("+");
+  Serial1.println("+");
+  delay(50);
   
   
   //
@@ -626,16 +633,17 @@ void setSysMode(byte newMode) {
   switch (newMode) {
     case SM_ON:
       sysPowerState = true;
-      io.breathe(PB_LAMP_SYS_MODE, 600, 600, 2000, 2000, LIGHT_BUTTON_BRIGHTNESS, 0, true);
+      io.breathe(PB_LAMP_SYS_MODE, 600, 300, 2000, 2500, SYS_BUTTON_BRIGHTNESS_HI, SYS_BUTTON_BRIGHTNESS_LOW, true);
       break;
     case SM_OFF:
       sysPowerState = false;
+      io.blink(PB_LAMP_SYS_MODE, 0, 0, 0, 0);
       io.analogWrite(PB_LAMP_SYS_MODE, 0);
       allOff();
       break;
     case SM_QUIET:
       sysPowerState = true;
-      io.blink(PB_LAMP_SYS_MODE, 400, 900, LIGHT_BUTTON_BRIGHTNESS, 0);
+      io.blink(PB_LAMP_SYS_MODE, 400, 900, SYS_BUTTON_BRIGHTNESS_HI, SYS_BUTTON_BRIGHTNESS_LOW);
       ampOff();
       break;
   }
@@ -652,6 +660,7 @@ void toggleSysMode() {
       setSysMode(SM_QUIET);
       break;
     case SM_OFF:
+      setSysMode(SM_ON);
       playSFX(9);
       break;
     case SM_QUIET:
