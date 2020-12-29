@@ -52,7 +52,7 @@ const int PIN_SFX_RST = 5;
 //
 // SFX constants
 //
-const uint8_t NUM_DOORBELL_TRACKS = 4;
+const uint8_t NUM_DOORBELL_TRACKS = 5;
 
 
 //
