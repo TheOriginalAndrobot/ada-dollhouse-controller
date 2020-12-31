@@ -48,6 +48,9 @@ const int PIN_PWM_BLANK = 8;
 //
 const int PIN_AMP_SHDNn = 4;
 const int PIN_SFX_RST = 5;
+//
+const int PIN_POWER_OFF = 6;  // Driving 1 will immediately shut off the system
+const int PIN_LOW_BATT = 9;   // Indicates low battery condition
 
 //
 // SFX constants
