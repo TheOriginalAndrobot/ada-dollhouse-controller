@@ -7,7 +7,7 @@
 //
 // Enable debug mode
 //
-#define DEBUG
+//#define DEBUG
 
 
 //
@@ -202,6 +202,9 @@ void setup() {
     io.enableInterrupt(IOB_BTNS[ii], FALLING);
     io.debouncePin(IOB_BTNS[ii]);
   }
+
+  // Turn on main power indicator early
+  io.analogWrite(PB_LAMP_SYS_MODE, SYS_BUTTON_BRIGHTNESS_HI);
   
   
   //
