@@ -29,9 +29,11 @@
 #endif
 
 // System modes
-#define SM_OFF    0
-#define SM_ON     1
-#define SM_QUIET  2
+#define SM_OFF      0
+#define SM_ON       1
+#define SM_QUIET    2   // Not currently used
+#define SM_LOW_BATT 3
+#define SM_BOOTING  4
 
 
 //
@@ -127,7 +129,7 @@ volatile int  ampPowerTimer = 0;          // Counts timer ticks toward timeout
 volatile bool lightPowerTimeout = false;  // Flag to cause lights to power down
 volatile long lightPowerTimer = 0;        // Counts timer ticks toward timeout
 uint8_t doorbellTrack = 0;                // Holds next doorbell track number to play
-byte sysMode = SM_OFF;                    // System mode
+byte sysMode = SM_BOOTING;                // System mode
 
 //
 // Run once at boot time
@@ -138,6 +140,10 @@ void setup() {
   
   //
   // Initial states
+  //
+  digitalWrite(PIN_POWER_OFF, LOW);
+  pinMode(PIN_POWER_OFF, OUTPUT);
+  pinMode(PIN_LOW_BATT, INPUT);
   //
   pinMode(PIN_PWM_BLANK, OUTPUT);
   pwmBlankOn();
@@ -229,7 +235,7 @@ void setup() {
   //
   Serial1.begin(9600);  // This is the HW UART to the SFX chip
   ampOff();             // Turn off the Amp (also configs the PIN)
-  doorbellTrack = random(NUM_DOORBELL_TRACKS);
+  doorbellTrack = random(NUM_DOORBELL_TRACKS);  // Pick a random starting track
 
   // Take out of reset
   pinMode(PIN_SFX_RST, INPUT);
@@ -242,7 +248,7 @@ void setup() {
   
   
   //
-  // Welcome message
+  // System is booted, play welcome message
   //
   setSysMode(SM_ON);
   playSFX(9);
@@ -316,6 +322,20 @@ void loop() {
     DEBUG_PRINT("Amp power timeout");
   }
 
+  //
+  // Low battery check
+  //
+  // Go into low battery mode
+  if (digitalRead(PIN_LOW_BATT) == HIGH && sysMode != SM_LOW_BATT){
+    setSysMode(SM_LOW_BATT);
+  }
+  // Come out of low battery mode (i.e. plugged in to charger)
+  else if (digitalRead(PIN_LOW_BATT) == LOW && sysMode == SM_LOW_BATT){
+    setSysMode(SM_ON);
+    playSFX(9);
+  }
+
+
 }
 
 
@@ -334,6 +354,7 @@ void iobISR() {
 // Do periodic work on timer interrupt
 //
 void runOnTimer(){
+
   // Perform light value fading
   updateLightValues();
 
@@ -434,7 +455,7 @@ void buttonAction(int button) {
       break;
     // System mode
     case 11:
-      toggleSysMode();
+      // Not implemented
       break;
   }
 }
@@ -466,11 +487,6 @@ void setLight(int lightNum, bool newState){
     // Feed watchdogs
     resetLightPowerTimer();
     resetSysPowerTimer();
-
-    // Turn on system if need be
-    if (sysMode == SM_OFF){
-      setSysMode(SM_ON);
-    }
     
     // Turn on lamp and lights
     io.analogWrite(PB_LAMP_CHAN_MAP[lightNum], LIGHT_BUTTON_BRIGHTNESS);
@@ -571,11 +587,6 @@ void ringDoorbell() {
   // Feed watchdogs
   resetSysPowerTimer();
 
-  // Turn on system if need be
-  if (sysMode == SM_OFF){
-    setSysMode(SM_ON);
-  }
-
   // Play next track and advance the sequence
   playSFX("T00RAND" + String(doorbellTrack) + "OGG");
   doorbellTrack = (doorbellTrack + 1) % NUM_DOORBELL_TRACKS;
@@ -641,38 +652,27 @@ void setSysMode(byte newMode) {
       sysPowerState = true;
       io.breathe(PB_LAMP_SYS_MODE, 600, 300, 2000, 2500, SYS_BUTTON_BRIGHTNESS_HI, SYS_BUTTON_BRIGHTNESS_LOW, true);
       break;
-    case SM_OFF:
-      sysPowerState = false;
-      io.blink(PB_LAMP_SYS_MODE, 0, 0, 0, 0);
-      io.analogWrite(PB_LAMP_SYS_MODE, 0);
-      allOff();
-      break;
     case SM_QUIET:
       sysPowerState = true;
       io.blink(PB_LAMP_SYS_MODE, 400, 900, SYS_BUTTON_BRIGHTNESS_HI, SYS_BUTTON_BRIGHTNESS_LOW);
       ampOff();
       break;
+    case SM_LOW_BATT:
+      sysPowerState = true;
+      io.blink(PB_LAMP_SYS_MODE, 400, 600, SYS_BUTTON_BRIGHTNESS_HI, 0);
+      break;
+    case SM_OFF:
+      sysPowerState = false;
+      io.blink(PB_LAMP_SYS_MODE, 0, 0, 0, 0);
+      io.analogWrite(PB_LAMP_SYS_MODE, 0);
+      //allOff();  --> System should already be all off due to the way shutdown timers are set up
+      digitalWrite(PIN_POWER_OFF, HIGH);
+      delay(1000);
+      // System will die here until powered back on
+      break;
   }
 
   sysMode = newMode;
-}
-
-//
-// Toggle through system modes
-//
-void toggleSysMode() {
-  switch (sysMode) {
-    case SM_ON:
-      setSysMode(SM_QUIET);
-      break;
-    case SM_OFF:
-      setSysMode(SM_ON);
-      playSFX(9);
-      break;
-    case SM_QUIET:
-      setSysMode(SM_OFF);
-      break;
-  }
 }
 
 
@@ -683,11 +683,11 @@ void allOff() {
 
   // Kill any playing audio
   Serial1.println("q");
-  
   ampOff();
   
   // Turn off all lights
   for (byte lightNum=0; lightNum<NUM_LIGHTS; lightNum++){
     setLight(lightNum, false);
   }
+
 }
