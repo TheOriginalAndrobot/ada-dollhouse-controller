@@ -612,8 +612,8 @@ void ampOn() {
 //
 // LED PWM helpers
 //
-// Note: Pull-down on SHDN pin has been removed from TLC board
-//       and a 100k pull-up has been isntalled on mobo
+// Note: Pull-down on blank pin has been removed from TLC board
+//       and a 100k pull-up has been installed on mobo
 //
 void pwmBlankOn() {
   //pinMode(PIN_PWM_BLANK, OUTPUT);
