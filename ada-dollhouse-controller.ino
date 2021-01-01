@@ -71,11 +71,13 @@ const byte PB_LAMP_SYS_MODE = 14;
 //
 // Timing parameters
 //
-const unsigned int TIMER_PERIOD_US = 10000;               // 10ms
-const unsigned int AMP_POWER_TIMEOUT_TICKS = 1000;        // 10s
+const unsigned int TIMER_PERIOD_US = 10000;               // 10ms ticks
+const unsigned int AMP_POWER_TIMEOUT_TICKS =      1000;   // 10s
 const unsigned long LIGHT_POWER_TIMEOUT_TICKS = 360000;   // 1h
-const unsigned long SYS_POWER_TIMEOUT_TICKS = 361000;     // 1h+10s
-const unsigned int LIGHT_LED_STEP = 64;
+const unsigned long SYS_POWER_TIMEOUT_TICKS =   420000;   // 1h+10m
+//
+const unsigned int LIGHT_LED_STEP = 64; // Brightness units changed per fade step
+
 
 //
 // Light data
@@ -243,6 +245,9 @@ void setup() {
 
   // Adjust volume up
   Serial1.println("+");
+  delay(1);
+  Serial1.println("+");
+  delay(1);
   Serial1.println("+");
   delay(50);
   
@@ -643,7 +648,7 @@ void pwmBlankOff() {
 
 
 //
-// Toggle through system modes
+// Enact system modes
 //
 void setSysMode(byte newMode) {
 
