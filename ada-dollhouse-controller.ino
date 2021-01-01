@@ -84,7 +84,7 @@ const unsigned int LIGHT_LED_STEP = 64; // Brightness units changed per fade ste
 //
 const unsigned int NUM_LIGHTS = 6;
 const unsigned int LIGHT_LED_BRIGHTNESS = 4095;
-const byte LIGHT_BUTTON_BRIGHTNESS = 255;
+const byte LIGHT_BUTTON_BRIGHTNESS = 200;
 const byte SYS_BUTTON_BRIGHTNESS_HI = 200;
 const byte SYS_BUTTON_BRIGHTNESS_LOW = 30;
 
@@ -333,6 +333,7 @@ void loop() {
   // Go into low battery mode
   if (digitalRead(PIN_LOW_BATT) == HIGH && sysMode != SM_LOW_BATT){
     setSysMode(SM_LOW_BATT);
+    playSFX(8);
   }
   // Come out of low battery mode (i.e. plugged in to charger)
   else if (digitalRead(PIN_LOW_BATT) == LOW && sysMode == SM_LOW_BATT){
@@ -655,7 +656,7 @@ void setSysMode(byte newMode) {
   switch (newMode) {
     case SM_ON:
       sysPowerState = true;
-      io.breathe(PB_LAMP_SYS_MODE, 600, 300, 2000, 2500, SYS_BUTTON_BRIGHTNESS_HI, SYS_BUTTON_BRIGHTNESS_LOW, true);
+      io.breathe(PB_LAMP_SYS_MODE, 600, 0, 2000, 3000, SYS_BUTTON_BRIGHTNESS_HI, SYS_BUTTON_BRIGHTNESS_LOW, true);
       break;
     case SM_QUIET:
       sysPowerState = true;
